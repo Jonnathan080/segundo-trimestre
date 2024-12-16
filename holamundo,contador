@@ -1,0 +1,67 @@
+#include <Wire.h>                  // Librería para I2C
+#include <Adafruit_GFX.h>          // Librería gráfica
+#include <Adafruit_SH110X.h>       // Librería para SH1106
+
+// Configuración de la pantalla
+#define SCREEN_WIDTH 128           // Ancho de la pantalla OLED
+#define SCREEN_HEIGHT 64           // Alto de la pantalla OLED
+
+// Pines I2C en el ESP32
+#define OLED_SDA 21                // GPIO para SDA
+#define OLED_SCL 22                // GPIO para SCL
+
+// Dirección I2C de la pantalla (cambia a 0x3D si no funciona con 0x3C)
+#define OLED_I2C_ADDRESS 0x3C      
+
+// Crear un objeto para la pantalla SH1106
+Adafruit_SH1106G display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire);
+
+// Variable del contador
+unsigned long contador = 0;
+
+void setup() {
+  // Iniciar comunicación serie (opcional)
+  Serial.begin(115200);
+  Serial.println("Iniciando OLED SH1106...");
+
+  // Iniciar el bus I2C
+  Wire.begin(OLED_SDA, OLED_SCL);
+
+  // Inicializar la pantalla
+  if (!display.begin(OLED_I2C_ADDRESS)) { // Solo pasamos la dirección I2C
+    Serial.println(F("No se pudo inicializar la pantalla SH1106!"));
+    while (true); // Detener si falla
+  }
+
+  // Limpiar la pantalla
+  display.clearDisplay();
+
+  // Mostrar "Hola Mundo"
+  display.setTextSize(2);            // Tamaño del texto (1 = normal, 2 = más grande)
+  display.setTextColor(SH110X_WHITE); // Color del texto
+  display.setCursor(0, 0);           // Posición del texto (x, y)
+  display.println("Hola Mundo");     // Escribe "Hola Mundo"
+
+  display.display();                 // Mostrar "Hola Mundo" en pantalla
+}
+
+void loop() {
+  // Limpiar la zona del contador
+  display.fillRect(0, 30, SCREEN_WIDTH, 30, SH110X_BLACK); // Borra el área del contador
+  display.setCursor(0, 30); // Posición del contador
+
+  // Incrementar el contador
+  contador++;
+
+  // Mostrar el valor del contador en la pantalla
+  display.setTextSize(1);           // Tamaño de texto más pequeño para el contador
+  display.print("Contador: ");
+  display.println(contador);
+  display.display();                // Actualizar la pantalla
+
+  // Imprimir el valor en la consola (opcional)
+  Serial.println(contador);
+
+  // Retardo antes de actualizar el contador (opcional, ajusta según sea necesario)
+  delay(500); // 500 ms de retraso
+}
