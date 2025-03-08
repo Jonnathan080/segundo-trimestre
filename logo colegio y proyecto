@@ -1,0 +1,116 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7735.h>
+#include <SPI.h>
+#include <SD.h>
+
+// Pines definidos para el ESP32 (ajusta según tu hardware)
+#define TFT_CS    5  // Pin de chip select de la pantalla TFT
+#define TFT_RST   22 // Pin de reset de la pantalla TFT
+#define TFT_A0    21 // Pin de datos/comandos de la pantalla TFT
+#define SD_CS     15 // Pin de chip select de la tarjeta SD
+
+// Configuración de la pantalla TFT
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_A0, TFT_RST);
+
+void setup() {
+  Serial.begin(115200);
+  
+  // Inicializar pantalla TFT
+  tft.initR(INITR_BLACKTAB);  // Tipo de pantalla ST7735S
+  tft.setRotation(1);        // Configura la orientación
+  tft.fillScreen(ST77XX_BLACK);
+
+  // Inicializar tarjeta SD
+  if (!SD.begin(SD_CS)) {
+    Serial.println("No se pudo inicializar la tarjeta SD.");
+    tft.setCursor(10, 10);
+    tft.setTextColor(ST77XX_RED);
+    tft.print("SD Error");
+    while (1);
+  }
+  Serial.println("Tarjeta SD inicializada.");
+
+  // Mostrar la imagen BMP
+  mostrarBMP("/imagen.bmp",14, 0);
+}
+
+void loop() {
+  // No se necesita código en loop para este ejemplo
+}
+
+// Función para mostrar una imagen BMP
+void mostrarBMP(const char *filename, int16_t x, int16_t y) {
+  File bmpFile;
+  int bmpWidth, bmpHeight;   // Tamaño de la imagen
+  uint8_t bmpDepth;          // Bits por pixel
+  uint32_t bmpImageOffset;   // Inicio de la imagen en el archivo
+  uint16_t rowBuffer[128];   // Buffer para una fila de píxeles
+
+  if ((x >= tft.width()) || (y >= tft.height())) return;
+
+  bmpFile = SD.open(filename);
+  if (!bmpFile) {
+    Serial.println("Error al abrir el archivo BMP.");
+    return;
+  }
+
+  // Leer cabecera del archivo BMP
+  if (read16(bmpFile) != 0x4D42) { // Comprobar si es un BMP válido
+    Serial.println("No es un archivo BMP válido.");
+    bmpFile.close();
+    return;
+  }
+
+  read32(bmpFile);            // Tamaño del archivo
+  read32(bmpFile);            // Reservado
+  bmpImageOffset = read32(bmpFile); // Inicio de la imagen
+  read32(bmpFile);            // Tamaño de la cabecera
+  bmpWidth  = read32(bmpFile);
+  bmpHeight = read32(bmpFile);
+  if (read16(bmpFile) != 1) { // Comprobar planos de color
+    Serial.println("El BMP tiene más de un plano.");
+    bmpFile.close();
+    return;
+  }
+
+  bmpDepth = read16(bmpFile); // Bits por pixel
+  if (bmpDepth != 24) {       // Asegurarse de que es un BMP de 24 bits
+    Serial.println("Solo se admiten BMP de 24 bits.");
+    bmpFile.close();
+    return;
+  }
+
+  // Leer la imagen
+  bmpFile.seek(bmpImageOffset);
+  uint8_t sdbuffer[3 * 128]; // Buffer para leer datos de la SD (128 píxeles)
+  for (int row = bmpHeight - 1; row >= 0; row--) { // Los BMP se almacenan de abajo hacia arriba
+    bmpFile.read(sdbuffer, sizeof(sdbuffer));
+    uint8_t *bufptr = sdbuffer;
+    for (int col = 0; col < bmpWidth; col++) {
+      uint16_t color = tft.color565(bufptr[2], bufptr[1], bufptr[0]);
+      rowBuffer[col] = color;
+      bufptr += 3;
+    }
+    tft.drawRGBBitmap(x, y + row, rowBuffer, bmpWidth, 1);
+  }
+
+  bmpFile.close();
+  Serial.println("Imagen mostrada.");
+}
+
+// Funciones auxiliares para leer datos del archivo BMP
+uint16_t read16(File &f) {
+  uint16_t result;
+  ((uint8_t *)&result)[0] = f.read(); // LSB
+  ((uint8_t *)&result)[1] = f.read(); // MSB
+  return result;
+}
+
+uint32_t read32(File &f) {
+  uint32_t result;
+  ((uint8_t *)&result)[0] = f.read(); // LSB
+  ((uint8_t *)&result)[1] = f.read();
+  ((uint8_t *)&result)[2] = f.read();
+  ((uint8_t *)&result)[3] = f.read(); // MSB
+  return result;
+}
