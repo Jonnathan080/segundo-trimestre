@@ -1,0 +1,81 @@
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7735.h>
+#include <SPI.h>
+#include <SD.h>
+
+// Pines definidos para el ESP32 (ajusta según tu hardware)
+#define TFT_CS    5  // Pin de chip select de la pantalla TFT
+#define TFT_RST   22 // Pin de reset de la pantalla TFT
+#define TFT_A0    21 // Pin de datos/comandos de la pantalla TFT
+#define SD_CS     15 // Pin de chip select de la tarjeta SD
+
+// Configuración de la pantalla TFT
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_A0, TFT_RST);
+
+void drawBmp(const char *filename, int16_t x, int16_t y) {
+    File bmpFile = SD.open(filename);
+    if (!bmpFile) {
+        Serial.print("No se pudo abrir el archivo: ");
+        Serial.println(filename);
+        return;
+    }
+
+    uint8_t header[54];
+    bmpFile.read(header, 54);
+    if (header[0] != 'B' || header[1] != 'M') {
+        Serial.println("No es un archivo BMP válido");
+        bmpFile.close();
+        return;
+    }
+
+    uint32_t bmpImageoffset = *(uint32_t *)&header[10];
+    int bmpWidth = *(int *)&header[18];
+    int bmpHeight = *(int *)&header[22];
+
+    if (*(uint16_t *)&header[28] != 24) {
+        Serial.println("El archivo BMP no es de 24 bits");
+        bmpFile.close();
+        return;
+    }
+
+    bool flip = bmpHeight > 0;
+    bmpHeight = abs(bmpHeight);
+    
+    bmpFile.seek(bmpImageoffset);
+    for (int row = 0; row < bmpHeight; row++) {
+        int pos = flip ? bmpImageoffset + (bmpHeight - 1 - row) * ((bmpWidth * 3 + 3) & ~3) : bmpImageoffset + row * ((bmpWidth * 3 + 3) & ~3);
+        bmpFile.seek(pos);
+        for (int col = 0; col < bmpWidth; col++) {
+            uint8_t b = bmpFile.read();
+            uint8_t g = bmpFile.read();
+            uint8_t r = bmpFile.read();
+            uint16_t color = tft.color565(r, g, b);
+            tft.drawPixel(x + col, y + row, color);
+        }
+    }
+    bmpFile.close();
+}
+
+void setup() {
+    Serial.begin(115200);
+    
+    tft.initR(INITR_BLACKTAB);
+    tft.setRotation(1);
+    tft.fillScreen(ST77XX_BLACK);
+
+    if (!SD.begin(SD_CS)) {
+        Serial.println("No se pudo inicializar la tarjeta SD.");
+        tft.setCursor(10, 10);
+        tft.setTextColor(ST77XX_RED);
+        tft.print("SD Error");
+        while (1);
+    }
+    Serial.println("Tarjeta SD inicializada.");
+}
+
+void loop() {
+    drawBmp("/imagen1.bmp", 0, 0);
+    delay(5000);
+    drawBmp("/imagen2.bmp", 0, 0);
+    delay(5000);
+}
